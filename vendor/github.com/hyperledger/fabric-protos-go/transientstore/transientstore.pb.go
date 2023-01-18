@@ -5,10 +5,11 @@ package transientstore
 
 import (
 	fmt "fmt"
+	math "math"
+
 	proto "github.com/golang/protobuf/proto"
 	rwset "github.com/hyperledger/fabric-protos-go/ledger/rwset"
 	peer "github.com/hyperledger/fabric-protos-go/peer"
-	math "math"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

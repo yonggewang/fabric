@@ -18,11 +18,12 @@ package bn254
 
 import (
 	"errors"
+	"math"
+	"runtime"
+
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark-crypto/internal/parallel"
-	"math"
-	"runtime"
 )
 
 // selector stores the index, mask and shifts needed to select bits from a scalar

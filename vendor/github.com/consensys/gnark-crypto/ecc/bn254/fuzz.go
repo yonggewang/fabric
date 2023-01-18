@@ -21,10 +21,11 @@ package bn254
 
 import (
 	"bytes"
+	"math/big"
+
 	"github.com/consensys/gnark-crypto/ecc/bn254/fp"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
-	"math/big"
 )
 
 const (

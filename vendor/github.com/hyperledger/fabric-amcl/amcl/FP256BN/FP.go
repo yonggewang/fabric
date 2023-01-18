@@ -22,8 +22,6 @@ under the License.
 
 package FP256BN
 
-
-
 //const NOT_SPECIAL int = 0
 //const PSEUDO_MERSENNE int = 1
 //const MONTGOMERY_FRIENDLY int = 2

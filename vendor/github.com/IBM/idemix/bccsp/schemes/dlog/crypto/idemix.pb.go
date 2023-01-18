@@ -5,9 +5,10 @@ package idemix
 
 import (
 	fmt "fmt"
+	math "math"
+
 	amcl "github.com/IBM/idemix/bccsp/schemes/dlog/crypto/translator/amcl"
 	proto "github.com/golang/protobuf/proto"
-	math "math"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

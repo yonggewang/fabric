@@ -1,3 +1,4 @@
+//go:build linux || darwin || freebsd || netbsd || openbsd || solaris || dragonfly || plan9
 // +build linux darwin freebsd netbsd openbsd solaris dragonfly plan9
 
 package pb

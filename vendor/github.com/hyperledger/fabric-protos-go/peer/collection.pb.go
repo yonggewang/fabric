@@ -5,9 +5,10 @@ package peer
 
 import (
 	fmt "fmt"
+	math "math"
+
 	proto "github.com/golang/protobuf/proto"
 	common "github.com/hyperledger/fabric-protos-go/common"
-	math "math"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

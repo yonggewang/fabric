@@ -21,8 +21,6 @@ under the License.
 
 package FP256BN
 
-
-
 type ECP2 struct {
 	x *FP2
 	y *FP2

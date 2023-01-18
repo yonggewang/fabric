@@ -23,8 +23,6 @@ under the License.
 
 package FP256BN
 
-
-
 type FP2 struct {
 	a *FP
 	b *FP

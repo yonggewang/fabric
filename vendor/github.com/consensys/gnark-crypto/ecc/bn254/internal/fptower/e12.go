@@ -19,8 +19,9 @@ package fptower
 import (
 	"encoding/binary"
 	"errors"
-	"github.com/consensys/gnark-crypto/ecc/bn254/fp"
 	"math/big"
+
+	"github.com/consensys/gnark-crypto/ecc/bn254/fp"
 )
 
 // E12 is a degree two finite field extension of fp6

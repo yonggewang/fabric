@@ -23,8 +23,6 @@ package FP256BN
 
 import "strconv"
 
-
-
 func NewDBIG() *DBIG {
 	b := new(DBIG)
 	for i := 0; i < DNLEN; i++ {
