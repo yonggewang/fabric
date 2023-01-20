@@ -112,12 +112,14 @@ func TestInitGossipService(t *testing.T) {
 	require.NoError(t, err)
 
 	messageCryptoService := peergossip.NewMCS(
-		&mocks.ChannelPolicyManagerGetter{},
-		signer,
+		&mocks.ChannelPolicyManagerGetter{}, 
+		&mocks.Id2IdentitiesFetcherMock{}, 
+		signer, 
 		deserManager,
 		cryptoProvider,
 		nil,
 	)
+
 	secAdv := peergossip.NewSecurityAdvisor(deserManager)
 	gossipConfig, err := gossip.GlobalConfig(endpoint, nil)
 	require.NoError(t, err)
@@ -393,6 +395,10 @@ func (ds *mockDeliverService) StopDeliverForChannel(chainID string) error {
 }
 
 func (ds *mockDeliverService) Stop() {
+}
+
+func (ds *mockDeliverService) UpdateEndpoints(chainID string, endpoints []*orderers.Endpoint) error {
+	return nil
 }
 
 type mockLedgerInfo struct {
@@ -840,6 +846,10 @@ func (*naiveCryptoService) GetPKIidOfCert(peerIdentity api.PeerIdentityType) gos
 // VerifyBlock returns nil if the block is properly signed,
 // else returns error
 func (*naiveCryptoService) VerifyBlock(chainID gossipcommon.ChannelID, seqNum uint64, signedBlock *common.Block) error {
+	return nil
+}
+
+func (*naiveCryptoService) VerifyHeader(channelID string, signedBlock *common.Block) error {
 	return nil
 }
 

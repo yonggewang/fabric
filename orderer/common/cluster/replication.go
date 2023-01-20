@@ -394,7 +394,7 @@ func BlockPullerFromConfigBlock(conf PullerConfig, block *common.Block, verifier
 			if verifier == nil {
 				return errors.Errorf("couldn't acquire verifier for channel %s", channel)
 			}
-			return VerifyBlocks(blocks, verifier)
+			return VerifyBlocksBFT(blocks, verifier)
 		},
 		MaxTotalBufferBytes: conf.MaxTotalBufferBytes,
 		Endpoints:           endpoints,
@@ -413,6 +413,12 @@ type NoopBlockVerifier struct{}
 func (*NoopBlockVerifier) VerifyBlockSignature(sd []*protoutil.SignedData, config *common.ConfigEnvelope) error {
 	return nil
 }
+
+// Id2Identity returns an empty map.
+func (*NoopBlockVerifier) Id2Identity(envelope *common.ConfigEnvelope) map[uint64][]byte {
+	return nil
+}
+
 
 //go:generate mockery -dir . -name ChainPuller -case underscore -output mocks/
 

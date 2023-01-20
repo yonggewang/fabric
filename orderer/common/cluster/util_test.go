@@ -13,6 +13,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"math"
 	"strings"
@@ -187,6 +188,7 @@ func TestVerifyBlockSignature(t *testing.T) {
 	verifier := &mocks.BlockVerifier{}
 	var nilConfigEnvelope *common.ConfigEnvelope
 	verifier.On("VerifyBlockSignature", mock.Anything, nilConfigEnvelope).Return(nil)
+	verifier.On("Id2Identity", mock.Anything).Return(nil)
 
 	block := createBlockChain(3, 3)[0]
 
@@ -330,6 +332,8 @@ func TestVerifyBlocks(t *testing.T) {
 	var sigSet1 []*protoutil.SignedData
 	var sigSet2 []*protoutil.SignedData
 
+	var sequenceSignatures *[][]*protoutil.SignedData
+
 	configEnvelope1 := &common.ConfigEnvelope{
 		Config: &common.Config{
 			Sequence: 1,
@@ -358,6 +362,7 @@ func TestVerifyBlocks(t *testing.T) {
 		configureVerifier     func(*mocks.BlockVerifier)
 		mutateBlockSequence   func([]*common.Block) []*common.Block
 		expectedError         string
+		verifyFunc            func(blockBuff []*common.Block, signatureVerifier cluster.BlockVerifier) error
 		verifierExpectedCalls int
 	}{
 		{
@@ -384,6 +389,7 @@ func TestVerifyBlocks(t *testing.T) {
 			},
 			configureVerifier: func(verifier *mocks.BlockVerifier) {
 				var nilEnvelope *common.ConfigEnvelope
+				verifier.On("Id2Identity", mock.Anything).Return(nil)
 				verifier.On("VerifyBlockSignature", mock.Anything, nilEnvelope).Return(errors.New("bad signature"))
 			},
 			expectedError:         "bad signature",
@@ -419,15 +425,16 @@ func TestVerifyBlocks(t *testing.T) {
 
 				assignHashes(blockSequence)
 
-				sigSet1, err = cluster.SignatureSetFromBlock(blockSequence[len(blockSequence)/4])
+				sigSet1, err = protoutil.SignatureSetFromBlock(blockSequence[len(blockSequence)/4],nil)
 				require.NoError(t, err)
-				sigSet2, err = cluster.SignatureSetFromBlock(blockSequence[len(blockSequence)/2])
+				sigSet2, err = protoutil.SignatureSetFromBlock(blockSequence[len(blockSequence)/2],nil)
 				require.NoError(t, err)
 
 				return blockSequence
 			},
 			configureVerifier: func(verifier *mocks.BlockVerifier) {
 				var nilEnvelope *common.ConfigEnvelope
+				verifier.On("Id2Identity", mock.Anything).Return(nil)
 				// The first config block, validates correctly.
 				verifier.On("VerifyBlockSignature", sigSet1, nilEnvelope).Return(nil).Once()
 				// However, the second config block - validates incorrectly.
@@ -450,16 +457,17 @@ func TestVerifyBlocks(t *testing.T) {
 
 				assignHashes(blockSequence)
 
-				sigSet1, err = cluster.SignatureSetFromBlock(blockSequence[len(blockSequence)/4])
+				sigSet1, err = protoutil.SignatureSetFromBlock(blockSequence[len(blockSequence)/4],nil)
 				require.NoError(t, err)
 
-				sigSet2, err = cluster.SignatureSetFromBlock(blockSequence[len(blockSequence)-1])
+				sigSet2, err = protoutil.SignatureSetFromBlock(blockSequence[len(blockSequence)-1],nil)
 				require.NoError(t, err)
 
 				return blockSequence
 			},
 			configureVerifier: func(verifier *mocks.BlockVerifier) {
 				var nilEnvelope *common.ConfigEnvelope
+				verifier.On("Id2Identity", mock.Anything).Return(nil)
 				confEnv1 := &common.ConfigEnvelope{}
 				proto.Unmarshal(protoutil.MarshalOrPanic(configEnvelope1), confEnv1)
 				verifier.On("VerifyBlockSignature", sigSet1, nilEnvelope).Return(nil).Once()
@@ -486,10 +494,10 @@ func TestVerifyBlocks(t *testing.T) {
 
 				assignHashes(blockSequence)
 
-				sigSet1, err = cluster.SignatureSetFromBlock(blockSequence[len(blockSequence)-2])
+				sigSet1, err = protoutil.SignatureSetFromBlock(blockSequence[len(blockSequence)-2],nil)
 				require.NoError(t, err)
 
-				sigSet2, err = cluster.SignatureSetFromBlock(blockSequence[len(blockSequence)-1])
+				sigSet2, err = protoutil.SignatureSetFromBlock(blockSequence[len(blockSequence)-1],nil)
 				require.NoError(t, err)
 
 				return blockSequence
@@ -499,6 +507,7 @@ func TestVerifyBlocks(t *testing.T) {
 				confEnv1 := &common.ConfigEnvelope{}
 				proto.Unmarshal(protoutil.MarshalOrPanic(configEnvelope1), confEnv1)
 				verifier.On("VerifyBlockSignature", sigSet1, nilEnvelope).Return(nil).Once()
+				verifier.On("Id2Identity", mock.Anything).Return(nil)
 				// We ensure that the signature set of the last block is verified using the config envelope of the block
 				// before it.
 				verifier.On("VerifyBlockSignature", sigSet2, confEnv1).Return(nil).Once()
@@ -507,6 +516,42 @@ func TestVerifyBlocks(t *testing.T) {
 			// We have 2 config blocks, yet we only verify twice- the first config block, and the next config block, but no more,
 			// since the last block is a config block.
 			verifierExpectedCalls: 2,
+		},
+		{
+			name:                  "config block in the sequence needs to be verified, along with all other blocks",
+			verifierExpectedCalls: 51,
+			mutateBlockSequence: func(blockSequence []*common.Block) []*common.Block {
+				// Put a config transaction in block n / 4
+				blockSequence[len(blockSequence)/4].Data = &common.BlockData{
+					Data: [][]byte{protoutil.MarshalOrPanic(configTransaction(configEnvelope1))},
+				}
+				for i := 1; i < len(blockSequence); i++ {
+					blockSequence[i-1].Header.DataHash = protoutil.BlockDataHash(blockSequence[i-1].Data)
+					blockSequence[i].Header.PreviousHash = protoutil.BlockHeaderHash(blockSequence[i-1].Header)
+				}
+
+				seqSigs := make([][]*protoutil.SignedData, len(blockSequence))
+				sequenceSignatures = &seqSigs
+				var err error
+				for i := 0; i < len(blockSequence); i++ {
+					(*sequenceSignatures)[i], err = protoutil.SignatureSetFromBlock(blockSequence[i], nil)
+					assert.NoError(t, err)
+				}
+				return blockSequence
+			},
+			configureVerifier: func(verifier *mocks.BlockVerifier) {
+				verifier.Mock = mock.Mock{}
+				verifier.On("Id2Identity", mock.Anything).Return(nil)
+				confEnv1 := &common.ConfigEnvelope{}
+				proto.Unmarshal(protoutil.MarshalOrPanic(configEnvelope1), confEnv1)
+
+				for i := 0; i < len(*sequenceSignatures)-1; i++ {
+					verifier.On("VerifyBlockSignature", (*sequenceSignatures)[i], mock.Anything).Return(nil).Once()
+				}
+				verifier.On("VerifyBlockSignature", (*sequenceSignatures)[len(*sequenceSignatures)-1], mock.Anything).Return(errors.New("bad signature")).Once()
+			},
+			expectedError: "bad signature",
+			verifyFunc:    cluster.VerifyBlocksBFT,
 		},
 	} {
 		testCase := testCase
@@ -517,12 +562,16 @@ func TestVerifyBlocks(t *testing.T) {
 			if testCase.configureVerifier != nil {
 				testCase.configureVerifier(verifier)
 			}
-			err := cluster.VerifyBlocks(blockchain, verifier)
+			if testCase.verifyFunc == nil {
+				testCase.verifyFunc = cluster.VerifyBlocksCFT
+			}
+			err := testCase.verifyFunc(blockchain, verifier)
 			if testCase.expectedError != "" {
 				require.EqualError(t, err, testCase.expectedError)
 			} else {
 				require.NoError(t, err)
 			}
+			verifier.AssertNumberOfCalls(t, "VerifyBlockSignature", testCase.verifierExpectedCalls)
 		})
 	}
 }

@@ -177,6 +177,10 @@ func (*naiveCryptoService) VerifyBlock(channelID common.ChannelID, seqNum uint64
 	return nil
 }
 
+func (*naiveCryptoService) VerifyHeader(channelID string, signedBlock *cb.Block) error {
+	return nil
+}
+
 // Sign signs msg with this peer's signing key and outputs
 // the signature if no error occurred.
 func (*naiveCryptoService) Sign(msg []byte) ([]byte, error) {

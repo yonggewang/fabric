@@ -2,10 +2,19 @@ module github.com/hyperledger/fabric
 
 go 1.18
 
+// develop
+replace github.com/hyperledger/fabric => ./
+replace github.com/hyperledger/fabric-protos-go => github.com/scientificideas/fabric-protos-go v0.0.0-20211020115310-530cb3512535
+replace github.com/hyperledger/fabric-config => github.com/scientificideas/fabric-config v0.1.1-0.20211022173806-2db6d2f11301
+
+// https://github.com/golang/go/issues/34610
+replace golang.org/x/sys => golang.org/x/sys v0.0.0-20190920190810-ef0ce1748380
+
 require (
 	code.cloudfoundry.org/clock v1.0.0
 	github.com/IBM/idemix v0.0.0-20220112103229-701e7610d405
 	github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible
+	github.com/SmartBFT-Go/consensus v0.0.0-20211116145419-fe83545244ec
 	github.com/VictoriaMetrics/fastcache v1.9.0
 	github.com/bits-and-blooms/bitset v1.2.1
 	github.com/cheggaaa/pb v1.0.29

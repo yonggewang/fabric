@@ -8,14 +8,17 @@ package deliverservice
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/util"
+	bftBlocksprovider "github.com/hyperledger/fabric/core/deliverservice/blocksprovider"
 	"github.com/hyperledger/fabric/internal/pkg/comm"
 	"github.com/hyperledger/fabric/internal/pkg/identity"
 	"github.com/hyperledger/fabric/internal/pkg/peer/blocksprovider"
@@ -36,6 +39,9 @@ type DeliverService interface {
 	// StopDeliverForChannel dynamically stops delivery of new blocks from ordering service
 	// to channel peers.
 	StopDeliverForChannel(chainID string) error
+
+	// UpdateEndpoints updates the ordering endpoints for the given chain.
+	UpdateEndpoints(chainID string, endpoints []*orderers.Endpoint) error
 
 	// Stop terminates delivery service and closes the connection
 	Stop()
@@ -67,6 +73,10 @@ type Config struct {
 	OrdererSource *orderers.ConnectionSource
 	// Signer is the identity used to sign requests.
 	Signer identity.SignerSerializer
+	// GRPC Client
+	DeliverGRPCClient *comm.GRPCClient
+	// Configuration values for deliver service.
+	// TODO: merge 2 Config struct
 	// DeliverServiceConfig is the configuration object.
 	DeliverServiceConfig *DeliverServiceConfig
 }
@@ -83,20 +93,53 @@ func NewDeliverService(conf *Config) DeliverService {
 	return ds
 }
 
+// DialerAdapter implements the creation of a new gRPC connection
 type DialerAdapter struct {
-	ClientConfig comm.ClientConfig
+	Client *comm.GRPCClient
 }
 
-func (da DialerAdapter) Dial(address string, rootCerts [][]byte) (*grpc.ClientConn, error) {
-	cc := da.ClientConfig
-	cc.SecOpts.ServerRootCAs = rootCerts
-	return cc.Dial(address)
+// Dial creates a new gRPC connection
+func (da DialerAdapter) Dial(address string, certPool *x509.CertPool) (*grpc.ClientConn, error) {
+	return da.Client.NewConnection(address, comm.CertPoolOverride(certPool))
 }
 
 type DeliverAdapter struct{}
 
-func (DeliverAdapter) Deliver(ctx context.Context, clientConn *grpc.ClientConn) (orderer.AtomicBroadcast_DeliverClient, error) {
-	return orderer.NewAtomicBroadcastClient(clientConn).Deliver(ctx)
+// Deliver returns a stream client
+func (DeliverAdapter) Deliver(ctx context.Context, clientConn *grpc.ClientConn) (blocksprovider.StreamClient, error) {
+	abc, err := orderer.NewAtomicBroadcastClient(clientConn).Deliver(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &deliverClient{abc: abc}, nil
+}
+
+type deliverClient struct {
+	abc orderer.AtomicBroadcast_DeliverClient
+}
+
+// Send sends an envelope to the ordering service
+func (d deliverClient) Send(envelope *common.Envelope) error {
+	return d.abc.Send(envelope)
+}
+
+// Recv receives a chaincode message
+func (d deliverClient) Recv() (*orderer.DeliverResponse, error) {
+	return d.abc.Recv()
+}
+
+// CloseSend closes the client connection
+func (d deliverClient) CloseSend() error {
+	d.abc.CloseSend()
+	return nil
+}
+
+// Disconnect does nothing
+func (d deliverClient) Disconnect() {
+}
+
+// UpdateReceived does nothing
+func (d deliverClient) UpdateReceived(blockNumber uint64) {
 }
 
 // StartDeliverForChannel starts blocks delivery for channel
@@ -116,29 +159,46 @@ func (d *deliverServiceImpl) StartDeliverForChannel(chainID string, ledgerInfo b
 		logger.Errorf(errMsg)
 		return errors.New(errMsg)
 	}
+	logger.Info("This peer will retrieve blocks from ordering service and disseminate to other peers in the organization for channel", chainID)
 
-	dc := &blocksprovider.Deliverer{
-		ChannelID:     chainID,
-		Gossip:        d.conf.Gossip,
-		Ledger:        ledgerInfo,
-		BlockVerifier: d.conf.CryptoSvc,
-		Dialer: DialerAdapter{
-			ClientConfig: comm.ClientConfig{
-				DialTimeout: d.conf.DeliverServiceConfig.ConnectionTimeout,
-				KaOpts:      d.conf.DeliverServiceConfig.KeepaliveOptions,
-				SecOpts:     d.conf.DeliverServiceConfig.SecOpts,
+	var bp blocksprovider.BlocksProvider
+
+	dialer := DialerAdapter{
+		Client: d.conf.DeliverGRPCClient,
+	}
+
+
+	if d.conf.DeliverServiceConfig.IsBFT {
+		bftClient, _ := NewBFTDeliveryClient(chainID, d.conf.OrdererSource, ledgerInfo, d.conf.CryptoSvc, d.conf.Signer, d.conf.DeliverGRPCClient, dialer)
+		bp = bftBlocksprovider.NewBlocksProvider(chainID, bftClient, d.conf.Gossip, d.conf.CryptoSvc)
+	} else {
+		dc := &blocksprovider.Deliverer{
+			ChannelID:     chainID,
+			Gossip:        d.conf.Gossip,
+			Ledger:        ledgerInfo,
+			BlockVerifier: d.conf.CryptoSvc,
+			Dialer: DialerAdapter{
+				ClientConfig: comm.ClientConfig{
+					DialTimeout: d.conf.DeliverServiceConfig.ConnectionTimeout,
+					KaOpts:      d.conf.DeliverServiceConfig.KeepaliveOptions,
+					SecOpts:     d.conf.DeliverServiceConfig.SecOpts,
+				},
 			},
-		},
-		Orderers:            d.conf.OrdererSource,
-		DoneC:               make(chan struct{}),
-		Signer:              d.conf.Signer,
-		DeliverStreamer:     DeliverAdapter{},
-		Logger:              flogging.MustGetLogger("peer.blocksprovider").With("channel", chainID),
-		MaxRetryDelay:       d.conf.DeliverServiceConfig.ReConnectBackoffThreshold,
-		MaxRetryDuration:    d.conf.DeliverServiceConfig.ReconnectTotalTimeThreshold,
-		BlockGossipDisabled: !d.conf.DeliverServiceConfig.BlockGossipEnabled,
-		InitialRetryDelay:   100 * time.Millisecond,
-		YieldLeadership:     !d.conf.IsStaticLeader,
+			Orderers:            d.conf.OrdererSource,
+			DoneC:               make(chan struct{}),
+			Signer:              d.conf.Signer,
+			DeliverStreamer:     DeliverAdapter{},
+			Logger:              flogging.MustGetLogger("peer.blocksprovider").With("channel", chainID),
+			MaxRetryDelay:       d.conf.DeliverServiceConfig.ReConnectBackoffThreshold,
+			MaxRetryDuration:    d.conf.DeliverServiceConfig.ReconnectTotalTimeThreshold,
+			BlockGossipDisabled: !d.conf.DeliverServiceConfig.BlockGossipEnabled,
+			InitialRetryDelay:   100 * time.Millisecond,
+			YieldLeadership:     !d.conf.IsStaticLeader,
+		}	
+		if d.conf.DeliverGRPCClient.MutualTLSRequired() {
+			dc.TLSCertHash = util.ComputeSHA256(d.conf.DeliverGRPCClient.Certificate().Certificate[0])
+		}
+		bp = dc
 	}
 
 	if dc.BlockGossipDisabled {
@@ -194,4 +254,26 @@ func (d *deliverServiceImpl) Stop() {
 	for _, client := range d.blockProviders {
 		client.Stop()
 	}
+}
+
+// UpdateEndpoints assigns the new endpoints for the block provider
+func (d *deliverServiceImpl) UpdateEndpoints(chainID string, endpoints []*orderers.Endpoint) error {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	// Use chainID to obtain blocks provider and pass endpoints
+	// for update
+	if dc, ok := d.blockProviders[chainID]; ok {
+		// We have found specified channel so we can safely update it
+		if bp, ok := dc.(interface {
+			UpdateEndpoints(endpoints []*orderers.Endpoint)
+		}); ok {
+			logger.Infof("UpdateEndpoints for %s", chainID)
+			bp.UpdateEndpoints(endpoints)
+		} else {
+			logger.Infof("No UpdateEndpoints for %s", chainID)
+		}
+		return nil
+	}
+	return errors.New(fmt.Sprintf("Channel with %s id was not found", chainID))
 }

@@ -56,6 +56,14 @@ github.com/Microsoft/hcsshim/internal/vmcompute
 github.com/Microsoft/hcsshim/internal/wclayer
 github.com/Microsoft/hcsshim/internal/winapi
 github.com/Microsoft/hcsshim/osversion
+# github.com/SmartBFT-Go/consensus v0.0.0-20211116145419-fe83545244ec
+## explicit
+github.com/SmartBFT-Go/consensus/internal/bft
+github.com/SmartBFT-Go/consensus/pkg/api
+github.com/SmartBFT-Go/consensus/pkg/consensus
+github.com/SmartBFT-Go/consensus/pkg/types
+github.com/SmartBFT-Go/consensus/pkg/wal
+github.com/SmartBFT-Go/consensus/smartbftprotos
 # github.com/VictoriaMetrics/fastcache v1.9.0
 ## explicit; go 1.13
 github.com/VictoriaMetrics/fastcache
@@ -222,6 +230,7 @@ github.com/hyperledger/fabric-config/protolator/protoext/peerext
 ## explicit
 github.com/hyperledger/fabric-lib-go/healthz
 # github.com/hyperledger/fabric-protos-go v0.3.0
+# github.com/hyperledger/fabric-protos-go v0.0.0-20190919234611-2a87503ac7c9 => github.com/scientificideas/fabric-protos-go v0.0.0-20211020115310-530cb3512535
 ## explicit; go 1.17
 github.com/hyperledger/fabric-protos-go/common
 github.com/hyperledger/fabric-protos-go/discovery
@@ -233,6 +242,7 @@ github.com/hyperledger/fabric-protos-go/ledger/rwset/kvrwset
 github.com/hyperledger/fabric-protos-go/msp
 github.com/hyperledger/fabric-protos-go/orderer
 github.com/hyperledger/fabric-protos-go/orderer/etcdraft
+github.com/hyperledger/fabric-protos-go/orderer/smartbft
 github.com/hyperledger/fabric-protos-go/peer
 github.com/hyperledger/fabric-protos-go/peer/lifecycle
 github.com/hyperledger/fabric-protos-go/transientstore
@@ -629,4 +639,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
+# github.com/hyperledger/fabric => ./
+# github.com/hyperledger/fabric-protos-go => github.com/scientificideas/fabric-protos-go v0.0.0-20211020115310-530cb3512535
+# github.com/hyperledger/fabric-config => github.com/scientificideas/fabric-config v0.1.1-0.20211022173806-2db6d2f11301
 # github.com/cespare/xxhash/v2 => github.com/cespare/xxhash/v2 v2.1.2

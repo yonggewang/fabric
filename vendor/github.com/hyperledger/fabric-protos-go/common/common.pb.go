@@ -79,6 +79,8 @@ const (
 	HeaderType_ORDERER_TRANSACTION  HeaderType = 4
 	HeaderType_DELIVER_SEEK_INFO    HeaderType = 5
 	HeaderType_CHAINCODE_PACKAGE    HeaderType = 6
+	HeaderType_PEER_ADMIN_OPERATION HeaderType = 8
+	HeaderType_TOKEN_TRANSACTION    HeaderType = 9
 )
 
 var HeaderType_name = map[int32]string{
@@ -89,6 +91,8 @@ var HeaderType_name = map[int32]string{
 	4: "ORDERER_TRANSACTION",
 	5: "DELIVER_SEEK_INFO",
 	6: "CHAINCODE_PACKAGE",
+	8: "PEER_ADMIN_OPERATION",
+	9: "TOKEN_TRANSACTION",
 }
 
 var HeaderType_value = map[string]int32{
@@ -99,6 +103,8 @@ var HeaderType_value = map[string]int32{
 	"ORDERER_TRANSACTION":  4,
 	"DELIVER_SEEK_INFO":    5,
 	"CHAINCODE_PACKAGE":    6,
+	"PEER_ADMIN_OPERATION": 8,
+	"TOKEN_TRANSACTION":    9,
 }
 
 func (x HeaderType) String() string {
@@ -236,6 +242,9 @@ type MetadataSignature struct {
 	SignatureHeader      []byte   `protobuf:"bytes,1,opt,name=signature_header,json=signatureHeader,proto3" json:"signature_header,omitempty"`
 	Signature            []byte   `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`
 	IdentifierHeader     []byte   `protobuf:"bytes,3,opt,name=identifier_header,json=identifierHeader,proto3" json:"identifier_header,omitempty"`
+	SignerId             uint64   `protobuf:"varint,3,opt,name=signer_id,json=signerId,proto3" json:"signer_id,omitempty"`
+	Nonce                []byte   `protobuf:"bytes,4,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	AuxiliaryInput       []byte   `protobuf:"bytes,5,opt,name=auxiliary_input,json=auxiliaryInput,proto3" json:"auxiliary_input,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -276,6 +285,27 @@ func (m *MetadataSignature) GetSignatureHeader() []byte {
 func (m *MetadataSignature) GetSignature() []byte {
 	if m != nil {
 		return m.Signature
+	}
+	return nil
+}
+
+func (m *MetadataSignature) GetSignerId() uint64 {
+	if m != nil {
+		return m.SignerId
+	}
+	return 0
+}
+
+func (m *MetadataSignature) GetNonce() []byte {
+	if m != nil {
+		return m.Nonce
+	}
+	return nil
+}
+
+func (m *MetadataSignature) GetAuxiliaryInput() []byte {
+	if m != nil {
+		return m.AuxiliaryInput
 	}
 	return nil
 }

@@ -1214,6 +1214,7 @@ func initGossipService(
 	deserManager := peergossip.NewDeserializersManager(localMSP)
 	messageCryptoService := peergossip.NewMCS(
 		policyMgr,
+		id2IdentitiesFetcher,
 		signer,
 		deserManager,
 		factory.GetDefault(),

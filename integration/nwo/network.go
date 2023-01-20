@@ -115,6 +115,7 @@ type Peer struct {
 	DevMode      bool           `yaml:"devmode,omitempty"`
 	Organization string         `yaml:"organization,omitempty"`
 	Channels     []*PeerChannel `yaml:"channels,omitempty"`
+	BFTDeliveryClient bool      `yaml:"bftdeliveryclient,omitempty"`
 }
 
 // PeerChannel names of the channel a peer should be joined to and whether or
@@ -647,6 +648,26 @@ func (n *Network) PeerCert(p *Peer) string {
 		"signcerts",
 		fmt.Sprintf("%s.%s-cert.pem", p.Name, org.Domain),
 	)
+}
+
+// OrdererCert returns the path to the orderer's certificate.
+func (n *Network) OrdererCert(o *Orderer) string {
+	org := n.Organization(o.Organization)
+	Expect(org).NotTo(BeNil())
+
+	return filepath.Join(
+		n.OrdererLocalMSPDir(o),
+		"signcerts",
+		fmt.Sprintf("%s.%s-cert.pem", o.Name, org.Domain),
+	)
+}
+
+// OrdererMSPID returns orderer's MSPID
+func (n *Network) OrdererMSPID(o *Orderer) string {
+	org := n.Organization(o.Organization)
+	Expect(org).NotTo(BeNil())
+
+	return org.MSPID
 }
 
 // PeerOrgMSPDir returns the path to the MSP directory of the Peer organization.
@@ -1709,6 +1730,16 @@ func (n *Network) PeersInOrg(orgName string) []*Peer {
 func (n *Network) ReservePort() uint16 {
 	n.StartPort++
 	return n.StartPort - 1
+}
+
+// OrdererIndex returns next int value
+func (n *Network) OrdererIndex(orderer *Orderer) int {
+	for i, o := range n.Orderers {
+		if orderer == o {
+			return i + 1
+		}
+	}
+	return -1
 }
 
 type (

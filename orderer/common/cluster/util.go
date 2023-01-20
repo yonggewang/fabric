@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-config/protolator"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric-protos-go/orderer/smartbft"
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/configtx"
@@ -208,6 +209,8 @@ type BlockVerifier interface {
 	// If the config envelope passed is nil, then the validation rules used
 	// are the ones that were applied at commit of previous blocks.
 	VerifyBlockSignature(sd []*protoutil.SignedData, config *common.ConfigEnvelope) error
+	// Id2Identity extracts identities of consenters against their identifiers from the envelope.
+	Id2Identity(envelope *common.ConfigEnvelope) map[uint64][]byte
 }
 
 // BlockSequenceVerifier verifies that the given consecutive sequence
@@ -221,7 +224,19 @@ type Dialer interface {
 
 // VerifyBlocks verifies the given consecutive sequence of blocks is valid,
 // and returns nil if it's valid, else an error.
-func VerifyBlocks(blockBuff []*common.Block, signatureVerifier BlockVerifier) error {
+// VerifyBlocksCFT verifies the given consecutive sequence of blocks is valid, doesn't verify signature,
+// and returns nil if it's valid, else an error.
+func VerifyBlocksCFT(blockBuff []*common.Block, signatureVerifier BlockVerifier) error {
+	return verifyBlockSequence(blockBuff, signatureVerifier, false)
+}
+
+// VerifyBlocksBFT verifies the given consecutive sequence of blocks is valid, always verifies signature,
+// and returns nil if it's valid, else an error.
+func VerifyBlocksBFT(blockBuff []*common.Block, signatureVerifier BlockVerifier) error {
+	return verifyBlockSequence(blockBuff, signatureVerifier, true)
+}
+
+func verifyBlockSequence(blockBuff []*common.Block, signatureVerifier BlockVerifier, alwaysCheckSig bool) error {
 	if len(blockBuff) == 0 {
 		return errors.New("buffer is empty")
 	}
@@ -241,11 +256,11 @@ func VerifyBlocks(blockBuff []*common.Block, signatureVerifier BlockVerifier) er
 	// during iteration over the block batch.
 	for _, block := range blockBuff {
 		configFromBlock, err := ConfigFromBlock(block)
-		if err == errNotAConfig {
+		if err == errNotAConfig && !alwaysCheckSig {
 			isLastBlockConfigBlock = false
 			continue
 		}
-		if err != nil {
+		if err != nil && !alwaysCheckSig {
 			return err
 		}
 		// The block is a configuration block, so verify it
@@ -348,38 +363,9 @@ func VerifyBlockHash(indexInBuffer int, blockBuff []*common.Block) error {
 	return nil
 }
 
-// SignatureSetFromBlock creates a signature set out of a block.
-func SignatureSetFromBlock(block *common.Block) ([]*protoutil.SignedData, error) {
-	if block.Metadata == nil || len(block.Metadata.Metadata) <= int(common.BlockMetadataIndex_SIGNATURES) {
-		return nil, errors.New("no metadata in block")
-	}
-	metadata, err := protoutil.GetMetadataFromBlock(block, common.BlockMetadataIndex_SIGNATURES)
-	if err != nil {
-		return nil, errors.Errorf("failed unmarshalling medatata for signatures: %v", err)
-	}
-
-	var signatureSet []*protoutil.SignedData
-	for _, metadataSignature := range metadata.Signatures {
-		sigHdr, err := protoutil.UnmarshalSignatureHeader(metadataSignature.SignatureHeader)
-		if err != nil {
-			return nil, errors.Errorf("failed unmarshalling signature header for block with id %d: %v",
-				block.Header.Number, err)
-		}
-		signatureSet = append(signatureSet,
-			&protoutil.SignedData{
-				Identity: sigHdr.Creator,
-				Data: util.ConcatenateBytes(metadata.Value,
-					metadataSignature.SignatureHeader, protoutil.BlockHeaderBytes(block.Header)),
-				Signature: metadataSignature.Signature,
-			},
-		)
-	}
-	return signatureSet, nil
-}
-
 // VerifyBlockSignature verifies the signature on the block with the given BlockVerifier and the given config.
 func VerifyBlockSignature(block *common.Block, verifier BlockVerifier, config *common.ConfigEnvelope) error {
-	signatureSet, err := SignatureSetFromBlock(block)
+	signatureSet, err := protoutil.SignatureSetFromBlock(block)
 	if err != nil {
 		return err
 	}
@@ -675,6 +661,7 @@ func (bva *BlockVerifierAssembler) VerifierFromConfig(configuration *common.Conf
 		PolicyMgr: policyMgr,
 		Channel:   channel,
 		BCCSP:     bva.BCCSP,
+		envelope:  configuration,
 	}, nil
 }
 
@@ -684,6 +671,33 @@ type BlockValidationPolicyVerifier struct {
 	Channel   string
 	PolicyMgr policies.Manager
 	BCCSP     bccsp.BCCSP
+	envelope  *common.ConfigEnvelope
+}
+
+// Id2Identity extracts identities of consenters against their identifiers from the envelope.
+func (bv *BlockValidationPolicyVerifier) Id2Identity(envelope *common.ConfigEnvelope) map[uint64][]byte {
+	if envelope == nil {
+		envelope = bv.envelope
+	}
+
+	consensusType := envelope.Config.ChannelGroup.Groups[channelconfig.OrdererGroupKey].Values[channelconfig.ConsensusTypeKey].Value
+	ct := &orderer.ConsensusType{}
+	err := proto.Unmarshal(consensusType, ct)
+	if err != nil {
+		bv.Logger.Panicf("Failed unmarshaling ConsensusType from consensusType: %v", err)
+	}
+
+	m := &smartbft.ConfigMetadata{}
+	err = proto.Unmarshal(ct.Metadata, m)
+	if err != nil {
+		bv.Logger.Panicf("Failed unmarshaling ConfigMetadata from metadata: %v", err)
+	}
+
+	res := make(map[uint64][]byte)
+	for _, consenter := range m.Consenters {
+		res[consenter.ConsenterId] = consenter.Identity
+	}
+	return res
 }
 
 // VerifyBlockSignature verifies the signed data associated to a block, optionally with the given config envelope.
