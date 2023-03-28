@@ -1521,7 +1521,7 @@ func (r *raft) handleSnapshot(m pb.Message) {
 		r.send(pb.Message{To: m.From, Type: pb.MsgAppResp, Index: r.raftLog.committed})
 	}
 }
-
+ 
 // restore recovers the state machine from a snapshot. It restores the log and the
 // configuration of state machine. If this method returns false, the snapshot was
 // ignored, either because it was obsolete or because of an error.
